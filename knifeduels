@@ -1,0 +1,497 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local Camera = Workspace.CurrentCamera
+local lp = Players.LocalPlayer
+local Mouse = lp:GetMouse()
+
+-- // Configuration //
+getgenv().KnifeConfig = {
+    Enabled = true,
+    HitPart = "Head",
+    FOV = 450,
+    WallCheck = true,
+    TriggerBot = false,
+    TriggerDelay = 0.05
+}
+
+getgenv().ESPConfig = {
+    PlayerNames = true,
+    HealthESP = true,
+    BoxESP = true,
+    Tracers = true
+}
+
+local HitParts = {"Head", "HumanoidRootPart", "UpperTorso", "LowerTorso"}
+local currentHitPartIdx = 1
+local lockedTarget = nil
+
+-- // Knife Controller Hook //
+local phem1 = Players
+local phem2 = Workspace
+local phem3 = lp
+local phem4 = Camera
+local phem5 = require(phem3.PlayerScripts:WaitForChild("Controllers"):WaitForChild("Combat"):WaitForChild("KnifeController"))
+
+local function isVisible(part)
+    if not getgenv().KnifeConfig.WallCheck then return true end
+    local origin = phem4.CFrame.Position
+    local direction = part.Position - origin
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {phem3.Character, phem4}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.IgnoreWater = true
+    local result = phem2:Raycast(origin, direction, params)
+    return result == nil or result.Instance:IsDescendantOf(part.Parent)
+end
+
+local function getTarget()
+    if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("Humanoid") and lockedTarget.Character.Humanoid.Health > 0 then
+        local targetPart = lockedTarget.Character:FindFirstChild(getgenv().KnifeConfig.HitPart)
+        if targetPart then
+            local pos, onScreen = phem4:WorldToViewportPoint(targetPart.Position)
+            local dist = (Vector2.new(pos.X, pos.Y) - (phem4.ViewportSize / 2)).Magnitude
+            if onScreen and dist <= getgenv().KnifeConfig.FOV and isVisible(targetPart) then
+                return lockedTarget
+            end
+        end
+    end
+
+    local bestTarget = nil
+    local shortestDist = getgenv().KnifeConfig.FOV
+    local center = phem4.ViewportSize / 2
+
+    for _, player in ipairs(phem1:GetPlayers()) do
+        if player ~= phem3 and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local hitPart = player.Character:FindFirstChild(getgenv().KnifeConfig.HitPart)
+            if hitPart then
+                local pos, onScreen = phem4:WorldToViewportPoint(hitPart.Position)
+                if onScreen and isVisible(hitPart) then
+                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if dist < shortestDist then
+                        bestTarget = player
+                        shortestDist = dist
+                    end
+                end
+            end
+        end
+    end
+    
+    lockedTarget = bestTarget
+    return bestTarget
+end
+
+local originalGetThrowDirection = phem5._GetThrowDirection
+phem5._GetThrowDirection = function(self, originPart)
+    if getgenv().KnifeConfig.Enabled then
+        local targetPlayer = getTarget()
+        if targetPlayer and targetPlayer.Character then
+            local hitPart = targetPlayer.Character:FindFirstChild(getgenv().KnifeConfig.HitPart)
+            if hitPart then
+                return (hitPart.Position - originPart.Position).Unit
+            end
+        end
+    end
+    return originalGetThrowDirection(self, originPart)
+end
+
+-- // Helper Function for Right Click Throw //
+local function doRightClick()
+    if mouse2click then
+        mouse2click()
+    elseif mouse2press and mouse2release then
+        mouse2press()
+        task.wait(0.02)
+        mouse2release()
+    elseif VirtualInputManager then
+        local mousePos = UserInputService:GetMouseLocation()
+        VirtualInputManager:SendMouseButtonEvent(mousePos.X, mousePos.Y, 1, true, game, 0)
+        task.wait(0.02)
+        VirtualInputManager:SendMouseButtonEvent(mousePos.X, mousePos.Y, 1, false, game, 0)
+    end
+end
+
+-- // FOV Circle Setup //
+local fovCircle = Drawing.new("Circle")
+fovCircle.Visible = true
+fovCircle.Transparency = 1
+fovCircle.Thickness = 1.5
+fovCircle.Color = Color3.fromRGB(132, 204, 22)
+fovCircle.Filled = false
+fovCircle.Radius = getgenv().KnifeConfig.FOV
+
+RunService.RenderStepped:Connect(function()
+    if getgenv().KnifeConfig.Enabled then
+        fovCircle.Visible = true
+        fovCircle.Radius = getgenv().KnifeConfig.FOV
+        fovCircle.Position = Camera.ViewportSize / 2
+    else
+        fovCircle.Visible = false
+    end
+end)
+
+-- // ESP Setup //
+local function createESP(player)
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.Color = Color3.fromRGB(132, 204, 22)
+    line.Thickness = 1
+    line.Transparency = 1
+
+    local boxTop = Drawing.new("Line")
+    local boxBottom = Drawing.new("Line")
+    local boxLeft = Drawing.new("Line")
+    local boxRight = Drawing.new("Line")
+
+    for _, boxLine in ipairs({boxTop, boxBottom, boxLeft, boxRight}) do
+        boxLine.Visible = false
+        boxLine.Color = Color3.fromRGB(132, 204, 22)
+        boxLine.Thickness = 1
+        boxLine.Transparency = 1
+    end
+
+    local nameText = Drawing.new("Text")
+    nameText.Visible = false
+    nameText.Color = Color3.fromRGB(255, 255, 255)
+    nameText.Size = 14
+    nameText.Center = true
+    nameText.Outline = true
+
+    local healthText = Drawing.new("Text")
+    healthText.Visible = false
+    healthText.Color = Color3.fromRGB(132, 204, 22)
+    healthText.Size = 13
+    healthText.Center = true
+    healthText.Outline = true
+
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") or not player.Character:FindFirstChild("Humanoid") or player == lp then
+            line.Visible = false
+            boxTop.Visible = false
+            boxBottom.Visible = false
+            boxLeft.Visible = false
+            boxRight.Visible = false
+            nameText.Visible = false
+            healthText.Visible = false
+            if not player.Parent then
+                line:Remove()
+                boxTop:Remove()
+                boxBottom:Remove()
+                boxLeft:Remove()
+                boxRight:Remove()
+                nameText:Remove()
+                healthText:Remove()
+                connection:Disconnect()
+            end
+            return
+        end
+
+        local character = player.Character
+        local rootPart = character.HumanoidRootPart
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        local head = character:FindFirstChild("Head")
+
+        if humanoid and humanoid.Health > 0 and head then
+            local vector, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+            local headVector = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.7, 0))
+            local legVector = Camera:WorldToViewportPoint(rootPart.Position - Vector3.new(0, 3, 0))
+
+            if onScreen then
+                local height = math.abs(headVector.Y - legVector.Y)
+                local width = height / 2
+                
+                local topLeft = Vector2.new(vector.X - width / 2, headVector.Y)
+                local topRight = Vector2.new(vector.X + width / 2, headVector.Y)
+                local bottomLeft = Vector2.new(vector.X - width / 2, legVector.Y)
+                local bottomRight = Vector2.new(vector.X + width / 2, legVector.Y)
+
+                if getgenv().ESPConfig.Tracers then
+                    line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    line.To = Vector2.new(vector.X, vector.Y)
+                    line.Visible = true
+                else
+                    line.Visible = false
+                end
+
+                if getgenv().ESPConfig.BoxESP then
+                    boxTop.From = topLeft
+                    boxTop.To = topRight
+                    boxTop.Visible = true
+
+                    boxBottom.From = bottomLeft
+                    boxBottom.To = bottomRight
+                    boxBottom.Visible = true
+
+                    boxLeft.From = topLeft
+                    boxLeft.To = bottomLeft
+                    boxLeft.Visible = true
+
+                    boxRight.From = topRight
+                    boxRight.To = bottomRight
+                    boxRight.Visible = true
+                else
+                    boxTop.Visible = false
+                    boxBottom.Visible = false
+                    boxLeft.Visible = false
+                    boxRight.Visible = false
+                end
+
+                if getgenv().ESPConfig.PlayerNames then
+                    nameText.Text = player.Name
+                    nameText.Position = Vector2.new(vector.X, headVector.Y - 18)
+                    nameText.Visible = true
+                else
+                    nameText.Visible = false
+                end
+
+                if getgenv().ESPConfig.HealthESP then
+                    healthText.Text = math.floor(humanoid.Health) .. " HP"
+                    healthText.Position = Vector2.new(vector.X, legVector.Y + 2)
+                    healthText.Visible = true
+                else
+                    healthText.Visible = false
+                end
+            else
+                line.Visible = false
+                boxTop.Visible = false
+                boxBottom.Visible = false
+                boxLeft.Visible = false
+                boxRight.Visible = false
+                nameText.Visible = false
+                healthText.Visible = false
+            end
+        else
+            line.Visible = false
+            boxTop.Visible = false
+            boxBottom.Visible = false
+            boxLeft.Visible = false
+            boxRight.Visible = false
+            nameText.Visible = false
+            healthText.Visible = false
+        end
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= lp then
+        coroutine.wrap(createESP)(player)
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    if player ~= lp then
+        player.CharacterAdded:Connect(function()
+            createESP(player)
+        end)
+    end
+end)
+
+-- // TriggerBot Loop (Triggers Right-Click throw when hovering over player) //
+local triggerTimer = 0
+RunService.RenderStepped:Connect(function(dt)
+    if getgenv().KnifeConfig.TriggerBot then
+        triggerTimer = triggerTimer + dt
+        if triggerTimer >= getgenv().KnifeConfig.TriggerDelay then
+            triggerTimer = 0
+            
+            local targetInstance = Mouse.Target
+            if targetInstance and targetInstance.Parent then
+                local char = targetInstance.Parent
+                if not char:FindFirstChildOfClass("Humanoid") and char.Parent then
+                    char = char.Parent
+                end
+                
+                local humanoid = char:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 and char ~= lp.Character then
+                    local player = Players:GetPlayerFromCharacter(char)
+                    if player and player ~= lp then
+                        local hitPart = char:FindFirstChild(getgenv().KnifeConfig.HitPart) or targetInstance
+                        if isVisible(hitPart) then
+                            doRightClick()
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- // UI Creation //
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KnifeHelperUI"
+ScreenGui.ResetOnSpawn = false
+
+local guiParent = (gethui and gethui()) or CoreGui or lp:WaitForChild("PlayerGui")
+pcall(function() ScreenGui.Parent = guiParent end)
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 230, 0, 360)
+MainFrame.Position = UDim2.new(0.5, -115, 0.5, -180)
+MainFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundTransparency = 1
+Title.Text = "Knife Helper [RightShift]"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 14
+Title.Font = Enum.Font.GothamBold
+Title.Parent = MainFrame
+
+local Container = Instance.new("Frame")
+Container.Size = UDim2.new(1, 0, 1, -40)
+Container.Position = UDim2.new(0, 0, 0, 40)
+Container.BackgroundTransparency = 1
+Container.Parent = MainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = Container
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 6)
+UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local function CreateToggle(name, defaultState, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0.9, 0, 0, 30)
+    Frame.BackgroundColor3 = Color3.fromRGB(34, 34, 34)
+    Frame.Parent = Container
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+    
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(1, 0, 1, 0)
+    Button.BackgroundTransparency = 1
+    Button.Text = name .. ": " .. (defaultState and "ON" or "OFF")
+    Button.TextColor3 = defaultState and Color3.fromRGB(132, 204, 22) or Color3.fromRGB(255, 85, 85)
+    Button.Font = Enum.Font.GothamSemibold
+    Button.TextSize = 12
+    Button.Parent = Frame
+    
+    local state = defaultState
+    Button.MouseButton1Click:Connect(function()
+        state = not state
+        Button.Text = name .. ": " .. (state and "ON" or "OFF")
+        Button.TextColor3 = state and Color3.fromRGB(132, 204, 22) or Color3.fromRGB(255, 85, 85)
+        callback(state)
+    end)
+    return Button
+end
+
+local function CreateSlider(name, min, max, default, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0.9, 0, 0, 40)
+    Frame.BackgroundColor3 = Color3.fromRGB(34, 34, 34)
+    Frame.Parent = Container
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+    
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, 0, 0.45, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = name .. ": " .. default
+    Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Label.Font = Enum.Font.GothamSemibold
+    Label.TextSize = 12
+    Label.Parent = Frame
+    
+    local SliderBg = Instance.new("Frame")
+    SliderBg.Size = UDim2.new(0.9, 0, 0, 6)
+    SliderBg.Position = UDim2.new(0.05, 0, 0.65, 0)
+    SliderBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    SliderBg.Parent = Frame
+    Instance.new("UICorner", SliderBg).CornerRadius = UDim.new(1, 0)
+    
+    local SliderFill = Instance.new("Frame")
+    SliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    SliderFill.BackgroundColor3 = Color3.fromRGB(132, 204, 22)
+    SliderFill.Parent = SliderBg
+    Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1, 0)
+    
+    local SliderBtn = Instance.new("TextButton")
+    SliderBtn.Size = UDim2.new(1, 0, 1, 0)
+    SliderBtn.BackgroundTransparency = 1
+    SliderBtn.Text = ""
+    SliderBtn.Parent = SliderBg
+    
+    local dragging = false
+    SliderBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    RunService.RenderStepped:Connect(function()
+        if dragging then
+            local mousePos = UserInputService:GetMouseLocation().X
+            local rel = math.clamp((mousePos - SliderBg.AbsolutePosition.X) / SliderBg.AbsoluteSize.X, 0, 1)
+            SliderFill.Size = UDim2.new(rel, 0, 1, 0)
+            local value = math.floor(min + (max - min) * rel)
+            Label.Text = name .. ": " .. value
+            callback(value)
+        end
+    end)
+end
+
+local function CreateButton(name, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0.9, 0, 0, 30)
+    Frame.BackgroundColor3 = Color3.fromRGB(34, 34, 34)
+    Frame.Parent = Container
+    Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 6)
+    
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(1, 0, 1, 0)
+    Button.BackgroundTransparency = 1
+    Button.Text = name
+    Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Button.Font = Enum.Font.GothamSemibold
+    Button.TextSize = 12
+    Button.Parent = Frame
+    
+    Button.MouseButton1Click:Connect(function() callback(Button) end)
+    return Button
+end
+
+-- UI Controls
+CreateToggle("Soft Aim", getgenv().KnifeConfig.Enabled, function(st) getgenv().KnifeConfig.Enabled = st end)
+CreateToggle("Wall Check", getgenv().KnifeConfig.WallCheck, function(st) getgenv().KnifeConfig.WallCheck = st end)
+CreateToggle("TriggerBot", getgenv().KnifeConfig.TriggerBot, function(st) getgenv().KnifeConfig.TriggerBot = st end)
+
+CreateSlider("FOV Size", 50, 800, getgenv().KnifeConfig.FOV, function(val)
+    getgenv().KnifeConfig.FOV = val
+end)
+
+CreateButton("Hit Part: " .. getgenv().KnifeConfig.HitPart, function(btn)
+    currentHitPartIdx = currentHitPartIdx + 1
+    if currentHitPartIdx > #HitParts then currentHitPartIdx = 1 end
+    getgenv().KnifeConfig.HitPart = HitParts[currentHitPartIdx]
+    btn.Text = "Hit Part: " .. getgenv().KnifeConfig.HitPart
+end)
+
+CreateButton("Switch Target [Q]", function()
+    lockedTarget = nil
+end)
+
+CreateToggle("Box ESP", getgenv().ESPConfig.BoxESP, function(st) getgenv().ESPConfig.BoxESP = st end)
+CreateToggle("Tracers", getgenv().ESPConfig.Tracers, function(st) getgenv().ESPConfig.Tracers = st end)
+
+-- Keybind Handling
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    elseif input.KeyCode == Enum.KeyCode.Q then
+        lockedTarget = nil
+    end
+end)
