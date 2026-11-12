@@ -1,9 +1,10 @@
--- Ultimate Auto-Farm (Clean UI Edition - Layout Fixed)
+-- Ultimate Auto-Farm (Sleek Dark UI - XVZ Edition)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local VoidAction = Remotes:WaitForChild("VoidAction")
@@ -47,7 +48,7 @@ local flyBG = nil
 local flyConnection = nil
 
 -- ==========================================
--- ANTI-CHEAT WALKSPEED BYPASS
+-- CORE LOGIC
 -- ==========================================
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", function(self, key)
@@ -77,9 +78,6 @@ local function ApplySpeed()
     end
 end
 
--- ==========================================
--- FLY SYSTEM
--- ==========================================
 function StartFlying()
     local char = LocalPlayer.Character
     if not char then return end
@@ -121,15 +119,11 @@ function StopFlying()
     if flyBG then flyBG:Destroy() flyBG = nil end
 end
 
--- ==========================================
--- SAFE TELEPORT LOGIC
--- ==========================================
 local function TeleportToSafety()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
     local currentPos = char.HumanoidRootPart.Position
-    
     local platform = Instance.new("Part")
     platform.Name = "SafetyPlatform"
     platform.Size = Vector3.new(200, 2, 200) 
@@ -138,16 +132,11 @@ local function TeleportToSafety()
     platform.BrickColor = BrickColor.new("Really black")
     platform.Material = Enum.Material.Neon
     platform.Transparency = 0.5
-    
     platform.Position = Vector3.new(currentPos.X + 5000, currentPos.Y - 50, currentPos.Z + 5000)
     platform.Parent = workspace
-
     char.HumanoidRootPart.CFrame = CFrame.new(platform.Position + Vector3.new(0, 5, 0))
 end
 
--- ==========================================
--- ESP SYSTEM
--- ==========================================
 local ESPFolder = Instance.new("Folder")
 ESPFolder.Name = "PlayerESP"
 ESPFolder.Parent = game:GetService("CoreGui")
@@ -226,9 +215,6 @@ end
 Players.PlayerAdded:Connect(function(player) if Config.ESP then createESP(player) end end)
 Players.PlayerRemoving:Connect(function(player) removeESP(player) end)
 
--- ==========================================
--- SAFE POSITION HELPER
--- ==========================================
 local function getSafePosition(obj)
     if obj:IsA("Model") then
         if obj.PrimaryPart then return obj.PrimaryPart.Position
@@ -240,9 +226,6 @@ local function getSafePosition(obj)
     return nil
 end
 
--- ==========================================
--- TARGETING LOGIC
--- ==========================================
 local function getClosestTarget()
     local closest = nil
     local shortestDistance = math.huge
@@ -394,9 +377,6 @@ local function getClosestTarget()
     return nil, nil
 end
 
--- ==========================================
--- AUTO SPIN LOOP
--- ==========================================
 task.spawn(function()
     while task.wait(1) do
         if Config.Enabled and Config.AutoSpin then
@@ -410,9 +390,6 @@ task.spawn(function()
     end
 end)
 
--- ==========================================
--- MAIN COMBAT LOOP
--- ==========================================
 RunService.RenderStepped:Connect(function()
     if not Config.Enabled then return end
     if tick() - lastAttack < Config.AttackCooldown then return end
@@ -450,387 +427,337 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ==========================================
--- GUI CREATION (FIXED LAYOUT)
+-- AESTHETIC UI CREATION
 -- ==========================================
+local Colors = {
+    Bg = Color3.fromRGB(18, 18, 18),
+    Panel = Color3.fromRGB(28, 28, 30),
+    Accent = Color3.fromRGB(255, 50, 50),
+    AccentHover = Color3.fromRGB(200, 40, 40),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextDim = Color3.fromRGB(150, 150, 150),
+    Stroke = Color3.fromRGB(50, 50, 55)
+}
+local FontBold = Enum.Font.GothamBold
+local FontNormal = Enum.Font.Gotham
+
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "UltimateFarm"
+ScreenGui.Name = "SleekFarm"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = game:GetService("CoreGui")
 
--- The main toggle button (Always visible)
-local ToggleMenuBtn = Instance.new("TextButton")
-ToggleMenuBtn.Size = UDim2.new(0, 160, 0, 35)
-ToggleMenuBtn.Position = UDim2.new(0, 20, 0, 20)
-ToggleMenuBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-ToggleMenuBtn.Text = "▶ Ultimate Farm"
-ToggleMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleMenuBtn.Font = Enum.Font.GothamBold
-ToggleMenuBtn.TextSize = 14
-ToggleMenuBtn.Parent = ScreenGui
+-- Toggle Button
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 140, 0, 35)
+ToggleBtn.Position = UDim2.new(0, 20, 0, 20)
+ToggleBtn.BackgroundColor3 = Colors.Panel
+ToggleBtn.Text = "▶ Menu"
+ToggleBtn.TextColor3 = Colors.Accent
+ToggleBtn.Font = FontBold
+ToggleBtn.TextSize = 13
+ToggleBtn.Parent = ScreenGui
 
 local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(0, 6)
-ToggleCorner.Parent = ToggleMenuBtn
+ToggleCorner.Parent = ToggleBtn
 
 local ToggleStroke = Instance.new("UIStroke")
-ToggleStroke.Color = Color3.fromRGB(80, 80, 100)
+ToggleStroke.Color = Colors.Stroke
 ToggleStroke.Thickness = 1
-ToggleStroke.Parent = ToggleMenuBtn
+ToggleStroke.Parent = ToggleBtn
 
--- The main frame (Hidden by default)
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 660) -- Increased height to fit new layout
-MainFrame.Position = UDim2.new(0, 20, 0, 65)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-MainFrame.BorderSizePixel = 0
-MainFrame.Visible = false
-MainFrame.Parent = ScreenGui
+-- Main Frame
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0, 260, 0, 580)
+Main.Position = UDim2.new(0, 20, 0, 65)
+Main.BackgroundColor3 = Colors.Bg
+Main.BorderSizePixel = 0
+Main.Visible = false
+Main.Parent = ScreenGui
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainFrame
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 8)
+MainCorner.Parent = Main
 
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(60, 60, 70)
-UIStroke.Thickness = 2
-UIStroke.Parent = MainFrame
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Colors.Stroke
+MainStroke.Thickness = 1
+MainStroke.Parent = Main
 
--- Header Title
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-Title.BackgroundTransparency = 0.5
-Title.Text = "Ultimate Farm Menu"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
-Title.Parent = MainFrame
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 35)
+Header.BackgroundColor3 = Colors.Panel
+Header.Parent = Main
+local HeaderCorner = Instance.new("UICorner") HeaderCorner.CornerRadius = UDim.new(0, 8) HeaderCorner.Parent = Header
 
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 8)
-TitleCorner.Parent = Title
+local HeaderText = Instance.new("TextLabel")
+HeaderText.Size = UDim2.new(1, -20, 1, 0)
+HeaderText.Position = UDim2.new(0, 10, 0, 0)
+HeaderText.BackgroundTransparency = 1
+HeaderText.Text = "ULTIMATE FARM - XVZ"
+HeaderText.TextColor3 = Colors.Text
+HeaderText.Font = FontBold
+HeaderText.TextSize = 13
+HeaderText.TextXAlignment = Enum.TextXAlignment.Left
+HeaderText.Parent = Header
 
--- Toggle Menu Logic
-ToggleMenuBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-    if MainFrame.Visible then
-        ToggleMenuBtn.Text = "▼ Ultimate Farm"
-    else
-        ToggleMenuBtn.Text = "▶ Ultimate Farm"
-    end
-end)
+-- Content Container
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -20, 1, -45)
+Content.Position = UDim2.new(0, 10, 0, 40)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
 
--- Start Farming Button
+-- Helper Functions for UI
+local function MakeSectionLabel(text, yPos)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 0, 15)
+    lbl.Position = UDim2.new(0, 0, 0, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text:upper()
+    lbl.TextColor3 = Colors.TextDim
+    lbl.Font = FontBold
+    lbl.TextSize = 10
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = Content
+end
+
+-- Start Button
 local StartBtn = Instance.new("TextButton")
-StartBtn.Size = UDim2.new(1, -20, 0, 35)
-StartBtn.Position = UDim2.new(0, 10, 0, 45)
-StartBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+StartBtn.Size = UDim2.new(1, 0, 0, 35)
+StartBtn.Position = UDim2.new(0, 0, 0, 0)
+StartBtn.BackgroundColor3 = Colors.Accent
 StartBtn.Text = "START FARMING"
-StartBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-StartBtn.Font = Enum.Font.GothamBold
+StartBtn.TextColor3 = Colors.Text
+StartBtn.Font = FontBold
 StartBtn.TextSize = 13
-StartBtn.Parent = MainFrame
+StartBtn.Parent = Content
+local StartCorner = Instance.new("UICorner") StartCorner.CornerRadius = UDim.new(0, 4) StartCorner.Parent = StartBtn
 
-local StartCorner = Instance.new("UICorner")
-StartCorner.CornerRadius = UDim.new(0, 6)
-StartCorner.Parent = StartBtn
+-- Teleport & Range
+local TpBtn = Instance.new("TextButton")
+TpBtn.Size = UDim2.new(0.48, 0, 0, 25)
+TpBtn.Position = UDim2.new(0, 0, 0, 45)
+TpBtn.BackgroundColor3 = Colors.Accent
+TpBtn.Text = "Teleport: ON"
+TpBtn.TextColor3 = Colors.Text
+TpBtn.Font = FontBold
+TpBtn.TextSize = 11
+TpBtn.Parent = Content
+local TpCorner = Instance.new("UICorner") TpCorner.CornerRadius = UDim.new(0, 4) TpCorner.Parent = TpBtn
 
--- Teleport & Range Toggles
-local TpToggle = Instance.new("TextButton")
-TpToggle.Size = UDim2.new(0, 115, 0, 28)
-TpToggle.Position = UDim2.new(0, 10, 0, 90)
-TpToggle.BackgroundColor3 = Color3.fromRGB(80, 150, 255)
-TpToggle.Text = "Teleport: ON"
-TpToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-TpToggle.Font = Enum.Font.GothamBold
-TpToggle.TextSize = 11
-TpToggle.Parent = MainFrame
+local InfBtn = Instance.new("TextButton")
+InfBtn.Size = UDim2.new(0.48, 0, 0, 25)
+InfBtn.Position = UDim2.new(0.52, 0, 0, 45)
+InfBtn.BackgroundColor3 = Colors.Panel
+InfBtn.Text = "Inf Range"
+InfBtn.TextColor3 = Colors.TextDim
+InfBtn.Font = FontBold
+InfBtn.TextSize = 11
+InfBtn.Parent = Content
+local InfCorner = Instance.new("UICorner") InfCorner.CornerRadius = UDim.new(0, 4) InfCorner.Parent = InfBtn
 
-local TpCorner = Instance.new("UICorner")
-TpCorner.CornerRadius = UDim.new(0, 4)
-TpCorner.Parent = TpToggle
+-- Sliders & Hack Buttons
+MakeSectionLabel("Movement", 80)
 
-local InfRangeBtn = Instance.new("TextButton")
-InfRangeBtn.Size = UDim2.new(0, 115, 0, 28)
-InfRangeBtn.Position = UDim2.new(0, 135, 0, 90)
-InfRangeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-InfRangeBtn.Text = "Infinite Range"
-InfRangeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-InfRangeBtn.Font = Enum.Font.GothamBold
-InfRangeBtn.TextSize = 11
-InfRangeBtn.Parent = MainFrame
-
-local InfCorner = Instance.new("UICorner")
-InfCorner.CornerRadius = UDim.new(0, 4)
-InfCorner.Parent = InfRangeBtn
-
--- Range Slider
-local RangeLabel = Instance.new("TextLabel")
-RangeLabel.Size = UDim2.new(1, -20, 0, 15)
-RangeLabel.Position = UDim2.new(0, 10, 0, 125)
-RangeLabel.BackgroundTransparency = 1
-RangeLabel.Text = "Range"
-RangeLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-RangeLabel.Font = Enum.Font.Gotham
-RangeLabel.TextSize = 11
-RangeLabel.TextXAlignment = Enum.TextXAlignment.Left
-RangeLabel.Parent = MainFrame
-
-local RangeSlider = Instance.new("Frame")
-RangeSlider.Size = UDim2.new(1, -20, 0, 15)
-RangeSlider.Position = UDim2.new(0, 10, 0, 140)
-RangeSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-RangeSlider.Parent = MainFrame
-
-local RangeFill = Instance.new("Frame")
-RangeFill.Size = UDim2.new(0.5, 0, 1, 0) 
-RangeFill.BackgroundColor3 = Color3.fromRGB(255, 150, 50)
-RangeFill.Parent = RangeSlider
-
-local RangeCorner = Instance.new("UICorner")
-RangeCorner.CornerRadius = UDim.new(0, 4)
-RangeCorner.Parent = RangeSlider
-local RangeFillCorner = Instance.new("UICorner")
-RangeFillCorner.CornerRadius = UDim.new(0, 4)
-RangeFillCorner.Parent = RangeFill
-
--- Speed Hack
 local SpeedBtn = Instance.new("TextButton")
-SpeedBtn.Size = UDim2.new(1, -20, 0, 28)
-SpeedBtn.Position = UDim2.new(0, 10, 0, 165)
-SpeedBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+SpeedBtn.Size = UDim2.new(1, 0, 0, 25)
+SpeedBtn.Position = UDim2.new(0, 0, 0, 95)
+SpeedBtn.BackgroundColor3 = Colors.Panel
 SpeedBtn.Text = "Speed Hack: OFF"
-SpeedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedBtn.Font = Enum.Font.GothamBold
+SpeedBtn.TextColor3 = Colors.TextDim
+SpeedBtn.Font = FontBold
 SpeedBtn.TextSize = 11
-SpeedBtn.Parent = MainFrame
-
-local SpeedCorner = Instance.new("UICorner")
-SpeedCorner.CornerRadius = UDim.new(0, 4)
-SpeedCorner.Parent = SpeedBtn
+SpeedBtn.Parent = Content
+local SpeedCorner = Instance.new("UICorner") SpeedCorner.CornerRadius = UDim.new(0, 4) SpeedCorner.Parent = SpeedBtn
 
 local SpeedSlider = Instance.new("Frame")
-SpeedSlider.Size = UDim2.new(1, -20, 0, 15)
-SpeedSlider.Position = UDim2.new(0, 10, 0, 198)
-SpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-SpeedSlider.Parent = MainFrame
+SpeedSlider.Size = UDim2.new(1, 0, 0, 6)
+SpeedSlider.Position = UDim2.new(0, 0, 0, 125)
+SpeedSlider.BackgroundColor3 = Colors.Stroke
+SpeedSlider.Parent = Content
+local SpeedFill = Instance.new("Frame") SpeedFill.Size = UDim2.new(0.4, 0, 1, 0) SpeedFill.BackgroundColor3 = Colors.Accent SpeedFill.Parent = SpeedSlider
+local SpeedSlideCorner = Instance.new("UICorner") SpeedSlideCorner.CornerRadius = UDim.new(0, 3) SpeedSlideCorner.Parent = SpeedSlider
 
-local SpeedFill = Instance.new("Frame")
-SpeedFill.Size = UDim2.new(0.4, 0, 1, 0) 
-SpeedFill.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-SpeedFill.Parent = SpeedSlider
-
-local SpeedSlideCorner = Instance.new("UICorner")
-SpeedSlideCorner.CornerRadius = UDim.new(0, 4)
-SpeedSlideCorner.Parent = SpeedSlider
-local SpeedFillCorner = Instance.new("UICorner")
-SpeedFillCorner.CornerRadius = UDim.new(0, 4)
-SpeedFillCorner.Parent = SpeedFill
-
--- Fly Hack
 local FlyBtn = Instance.new("TextButton")
-FlyBtn.Size = UDim2.new(1, -20, 0, 28)
-FlyBtn.Position = UDim2.new(0, 10, 0, 220)
-FlyBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+FlyBtn.Size = UDim2.new(1, 0, 0, 25)
+FlyBtn.Position = UDim2.new(0, 0, 0, 140)
+FlyBtn.BackgroundColor3 = Colors.Panel
 FlyBtn.Text = "Fly Hack: OFF"
-FlyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-FlyBtn.Font = Enum.Font.GothamBold
+FlyBtn.TextColor3 = Colors.TextDim
+FlyBtn.Font = FontBold
 FlyBtn.TextSize = 11
-FlyBtn.Parent = MainFrame
-
-local FlyCorner = Instance.new("UICorner")
-FlyCorner.CornerRadius = UDim.new(0, 4)
-FlyCorner.Parent = FlyBtn
+FlyBtn.Parent = Content
+local FlyCorner = Instance.new("UICorner") FlyCorner.CornerRadius = UDim.new(0, 4) FlyCorner.Parent = FlyBtn
 
 local FlySlider = Instance.new("Frame")
-FlySlider.Size = UDim2.new(1, -20, 0, 15)
-FlySlider.Position = UDim2.new(0, 10, 0, 253)
-FlySlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-FlySlider.Parent = MainFrame
+FlySlider.Size = UDim2.new(1, 0, 0, 6)
+FlySlider.Position = UDim2.new(0, 0, 0, 170)
+FlySlider.BackgroundColor3 = Colors.Stroke
+FlySlider.Parent = Content
+local FlyFill = Instance.new("Frame") FlyFill.Size = UDim2.new(0.2, 0, 1, 0) FlyFill.BackgroundColor3 = Colors.Accent FlyFill.Parent = FlySlider
+local FlySlideCorner = Instance.new("UICorner") FlySlideCorner.CornerRadius = UDim.new(0, 3) FlySlideCorner.Parent = FlySlider
 
-local FlyFill = Instance.new("Frame")
-FlyFill.Size = UDim2.new(0.2, 0, 1, 0) 
-FlyFill.BackgroundColor3 = Color3.fromRGB(150, 50, 200)
-FlyFill.Parent = FlySlider
-
-local FlySlideCorner = Instance.new("UICorner")
-FlySlideCorner.CornerRadius = UDim.new(0, 4)
-FlySlideCorner.Parent = FlySlider
-local FlyFillCorner = Instance.new("UICorner")
-FlyFillCorner.CornerRadius = UDim.new(0, 4)
-FlyFillCorner.Parent = FlyFill
-
--- Toggles Grid (Increased height to fit the 9th button)
-local TogglesFrame = Instance.new("Frame")
-TogglesFrame.Size = UDim2.new(1, -20, 0, 200)
-TogglesFrame.Position = UDim2.new(0, 10, 0, 280) 
-TogglesFrame.BackgroundTransparency = 1
-TogglesFrame.Parent = MainFrame
+-- Toggles Grid
+MakeSectionLabel("Targets", 190)
 
 local function CreateToggle(name, text, defaultState, pos)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.48, 0, 0, 30)
+    btn.Size = UDim2.new(0.48, 0, 0, 25)
     btn.Position = pos
-    btn.BackgroundColor3 = defaultState and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    btn.BackgroundColor3 = defaultState and Colors.Accent or Colors.Panel
     btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamBold
+    btn.TextColor3 = defaultState and Colors.Text or Colors.TextDim
+    btn.Font = FontBold
     btn.TextSize = 11
-    btn.Parent = TogglesFrame
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 4)
-    corner.Parent = btn
+    btn.Parent = Content
+    local corner = Instance.new("UICorner") corner.CornerRadius = UDim.new(0, 4) corner.Parent = btn
+    
     btn.MouseButton1Click:Connect(function()
         Config[name] = not Config[name]
-        btn.BackgroundColor3 = Config[name] and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+        btn.BackgroundColor3 = Config[name] and Colors.Accent or Colors.Panel
+        btn.TextColor3 = Config[name] and Colors.Text or Colors.TextDim
         if name == "ESP" then updateAllESP() end
     end)
-    return btn
 end
 
-CreateToggle("TargetVoid", "Void Orbs", true, UDim2.new(0, 0, 0, 0))
-CreateToggle("TargetSand", "Sand Orbs", true, UDim2.new(0.52, 0, 0, 0))
-CreateToggle("TargetPlayers", "Players", true, UDim2.new(0, 0, 0, 40))
-CreateToggle("TargetAIBugs", "AI Bugs", true, UDim2.new(0.52, 0, 0, 40))
-CreateToggle("TargetObjects", "Objects", true, UDim2.new(0, 0, 0, 80))
-CreateToggle("TargetOrbs", "XP Orbs", false, UDim2.new(0.52, 0, 0, 80))
-CreateToggle("EatCorpses", "Eat Bodies", true, UDim2.new(0, 0, 0, 120))
-CreateToggle("AutoSpin", "Auto Spin", false, UDim2.new(0.52, 0, 0, 120))
-CreateToggle("ESP", "Player ESP", false, UDim2.new(0, 0, 0, 160))
+CreateToggle("TargetVoid", "Void Orbs", true, UDim2.new(0, 0, 0, 210))
+CreateToggle("TargetSand", "Sand Orbs", true, UDim2.new(0.52, 0, 0, 210))
+CreateToggle("TargetPlayers", "Players", true, UDim2.new(0, 0, 0, 245))
+CreateToggle("TargetAIBugs", "AI Bugs", true, UDim2.new(0.52, 0, 0, 245))
+CreateToggle("TargetObjects", "Objects", true, UDim2.new(0, 0, 0, 280))
+CreateToggle("TargetOrbs", "XP Orbs", false, UDim2.new(0.52, 0, 0, 280))
+CreateToggle("EatCorpses", "Eat Bodies", true, UDim2.new(0, 0, 0, 315))
+CreateToggle("AutoSpin", "Auto Spin", false, UDim2.new(0.52, 0, 0, 315))
+CreateToggle("ESP", "Player ESP", false, UDim2.new(0, 0, 0, 350))
 
--- Safety Button (Pushed down to y=495)
+-- Bottom Section
 local SafetyBtn = Instance.new("TextButton")
-SafetyBtn.Size = UDim2.new(1, -20, 0, 28)
-SafetyBtn.Position = UDim2.new(0, 10, 0, 495)
-SafetyBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
-SafetyBtn.Text = "TELEPORT TO SAFETY"
-SafetyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SafetyBtn.Font = Enum.Font.GothamBold
+SafetyBtn.Size = UDim2.new(0.48, 0, 0, 25)
+SafetyBtn.Position = UDim2.new(0, 0, 0, 390)
+SafetyBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 0)
+SafetyBtn.Text = "Safety Tp"
+SafetyBtn.TextColor3 = Colors.Text
+SafetyBtn.Font = FontBold
 SafetyBtn.TextSize = 11
-SafetyBtn.Parent = MainFrame
-
-local SafetyCorner = Instance.new("UICorner")
-SafetyCorner.CornerRadius = UDim.new(0, 4)
-SafetyCorner.Parent = SafetyBtn
-
--- Player Dropdown
-local DropdownLabel = Instance.new("TextLabel")
-DropdownLabel.Size = UDim2.new(1, -20, 0, 15)
-DropdownLabel.Position = UDim2.new(0, 10, 0, 535)
-DropdownLabel.BackgroundTransparency = 1
-DropdownLabel.Text = "Teleport to Player:"
-DropdownLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-DropdownLabel.Font = Enum.Font.Gotham
-DropdownLabel.TextSize = 11
-DropdownLabel.TextXAlignment = Enum.TextXAlignment.Left
-DropdownLabel.Parent = MainFrame
+SafetyBtn.Parent = Content
+local SafetyCorner = Instance.new("UICorner") SafetyCorner.CornerRadius = UDim.new(0, 4) SafetyCorner.Parent = SafetyBtn
 
 local DropdownBtn = Instance.new("TextButton")
-DropdownBtn.Size = UDim2.new(1, -20, 0, 28)
-DropdownBtn.Position = UDim2.new(0, 10, 0, 555)
-DropdownBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-DropdownBtn.Text = "Select a Player..."
-DropdownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-DropdownBtn.Font = Enum.Font.Gotham
+DropdownBtn.Size = UDim2.new(0.48, 0, 0, 25)
+DropdownBtn.Position = UDim2.new(0.52, 0, 0, 390)
+DropdownBtn.BackgroundColor3 = Colors.Panel
+DropdownBtn.Text = "Select Player..."
+DropdownBtn.TextColor3 = Colors.TextDim
+DropdownBtn.Font = FontBold
 DropdownBtn.TextSize = 11
-DropdownBtn.Parent = MainFrame
-
-local DropdownCorner = Instance.new("UICorner")
-DropdownCorner.CornerRadius = UDim.new(0, 4)
-DropdownCorner.Parent = DropdownBtn
+DropdownBtn.Parent = Content
+local DropdownCorner = Instance.new("UICorner") DropdownCorner.CornerRadius = UDim.new(0, 4) DropdownCorner.Parent = DropdownBtn
 
 local DropdownFrame = Instance.new("ScrollingFrame")
-DropdownFrame.Size = UDim2.new(1, -20, 0, 80)
-DropdownFrame.Position = UDim2.new(0, 10, 0, 588)
-DropdownFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+DropdownFrame.Size = UDim2.new(1, 0, 0, 100)
+DropdownFrame.Position = UDim2.new(0, 0, 0, 420)
+DropdownFrame.BackgroundColor3 = Colors.Panel
 DropdownFrame.BorderSizePixel = 0
 DropdownFrame.Visible = false
-DropdownFrame.ScrollBarThickness = 4
-DropdownFrame.Parent = MainFrame
+DropdownFrame.ScrollBarThickness = 2
+DropdownFrame.Parent = Content
+local DropdownUICorner = Instance.new("UICorner") DropdownUICorner.CornerRadius = UDim.new(0, 4) DropdownUICorner.Parent = DropdownFrame
+local UIListLayout = Instance.new("UIListLayout") UIListLayout.Padding = UDim.new(0, 2) UIListLayout.Parent = DropdownFrame
 
-local DropdownUICorner = Instance.new("UICorner")
-DropdownUICorner.CornerRadius = UDim.new(0, 4)
-DropdownUICorner.Parent = DropdownFrame
-
-local UIListLayout = Instance.new("UIListLayout")
-UIListLayout.Padding = UDim.new(0, 2)
-UIListLayout.Parent = DropdownFrame
-
-local function UpdateDropdown()
-    for _, child in pairs(DropdownFrame:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            local pBtn = Instance.new("TextButton")
-            pBtn.Size = UDim2.new(1, -4, 0, 22)
-            pBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-            pBtn.Text = player.DisplayName
-            pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            pBtn.Font = Enum.Font.Gotham
-            pBtn.TextSize = 11
-            pBtn.Parent = DropdownFrame
-            pBtn.MouseButton1Click:Connect(function()
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    LocalPlayer.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
-                end
-                DropdownFrame.Visible = false
-                DropdownBtn.Text = "Select a Player..."
-            end)
-        end
-    end
-end
-
-DropdownBtn.MouseButton1Click:Connect(function()
-    DropdownFrame.Visible = not DropdownFrame.Visible
-    if DropdownFrame.Visible then UpdateDropdown() end
-end)
-
--- Status Label
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -20, 0, 20)
-StatusLabel.Position = UDim2.new(0, 10, 0, 630) 
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Status: Idle"
-StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.TextSize = 11
-StatusLabel.Parent = MainFrame
+local StatusLbl = Instance.new("TextLabel")
+StatusLbl.Size = UDim2.new(1, 0, 0, 20)
+StatusLbl.Position = UDim2.new(0, 0, 1, -20)
+StatusLbl.BackgroundTransparency = 1
+StatusLbl.Text = "Status: Idle"
+StatusLbl.TextColor3 = Colors.TextDim
+StatusLbl.Font = FontNormal
+StatusLbl.TextSize = 10
+StatusLbl.TextXAlignment = Enum.TextXAlignment.Right
+StatusLbl.Parent = Content
 
 -- ==========================================
--- GUI EVENT LISTENERS
+-- INTERACTIONS & ANIMATIONS
 -- ==========================================
-local draggingRange = false
-local draggingSpeed = false
-local draggingFly = false
 
-RangeSlider.InputBegan:Connect(function(input)
-    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not Config.InfiniteRange then draggingRange = true end
+-- Toggle Menu (Fixed position snapping)
+local isOpen = false
+ToggleBtn.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    if isOpen then
+        Main.Visible = true
+        ToggleBtn.Text = "▼ Menu"
+        Main.BackgroundTransparency = 1
+        TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0
+        }):Play()
+    else
+        local tween = TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+            BackgroundTransparency = 1
+        })
+        tween:Play()
+        tween.Completed:Connect(function()
+            Main.Visible = false
+            ToggleBtn.Text = "▶ Menu"
+        end)
+    end
 end)
 
-SpeedSlider.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSpeed = true end
-end)
-
-FlySlider.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingFly = true end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
+-- Dragging Main
+local dragging = false
+local dragInput, dragStart, startPos
+Header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        draggingRange = false
-        draggingSpeed = false
-        draggingFly = false
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+Header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
 
+-- Dragging Toggle
+local draggingBtn = false
+local dragInputBtn, dragStartBtn, startPosBtn
+ToggleBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingBtn = true
+        dragStartBtn = input.Position
+        startPosBtn = ToggleBtn.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then draggingBtn = false end
+        end)
+    end
+end)
+ToggleBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInputBtn = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInputBtn and draggingBtn then
+        local delta = input.Position - dragStartBtn
+        ToggleBtn.Position = UDim2.new(startPosBtn.X.Scale, startPosBtn.X.Offset + delta.X, startPosBtn.Y.Scale, startPosBtn.Y.Offset + delta.Y)
+    end
+end)
+
+-- Sliders
+local draggingSpeed, draggingFly = false, false
+SpeedSlider.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSpeed = true end end)
+FlySlider.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingFly = true end end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSpeed = false draggingFly = false end end)
 UserInputService.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        if draggingRange then
-            local percent = math.clamp((input.Position.X - RangeSlider.AbsolutePosition.X) / RangeSlider.AbsoluteSize.X, 0.01, 1)
-            RangeFill.Size = UDim2.new(percent, 0, 1, 0)
-            Config.Range = math.floor(percent * 2000) 
-        elseif draggingSpeed then
+        if draggingSpeed then
             local percent = math.clamp((input.Position.X - SpeedSlider.AbsolutePosition.X) / SpeedSlider.AbsoluteSize.X, 0.064, 1) 
             SpeedFill.Size = UDim2.new(percent, 0, 1, 0)
             Config.WalkSpeed = math.floor(percent * 250) 
@@ -843,39 +770,39 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
+-- Clicks
 StartBtn.MouseButton1Click:Connect(function()
     Config.Enabled = not Config.Enabled
-    StartBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    StartBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(50, 200, 50) or Colors.Accent
     StartBtn.Text = Config.Enabled and "STOP FARMING" or "START FARMING"
-    StatusLabel.Text = Config.Enabled and "Status: Farming..." or "Status: Idle"
+    StatusLbl.Text = Config.Enabled and "Status: Farming..." or "Status: Idle"
 end)
 
-TpToggle.MouseButton1Click:Connect(function()
+TpBtn.MouseButton1Click:Connect(function()
     Config.TeleportEnabled = not Config.TeleportEnabled
-    TpToggle.Text = Config.TeleportEnabled and "Teleport: ON" or "Teleport: OFF"
-    TpToggle.BackgroundColor3 = Config.TeleportEnabled and Color3.fromRGB(80, 150, 255) or Color3.fromRGB(200, 50, 50)
+    TpBtn.Text = Config.TeleportEnabled and "Teleport: ON" or "Teleport: OFF"
+    TpBtn.BackgroundColor3 = Config.TeleportEnabled and Colors.Accent or Colors.Panel
+    TpBtn.TextColor3 = Config.TeleportEnabled and Colors.Text or Colors.TextDim
 end)
 
-InfRangeBtn.MouseButton1Click:Connect(function()
+InfBtn.MouseButton1Click:Connect(function()
     Config.InfiniteRange = not Config.InfiniteRange
-    InfRangeBtn.BackgroundColor3 = Config.InfiniteRange and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
-    if Config.InfiniteRange then
-        RangeFill.BackgroundColor3 = Color3.fromRGB(100, 100, 100) 
-    else
-        RangeFill.BackgroundColor3 = Color3.fromRGB(255, 150, 50) 
-    end
+    InfBtn.BackgroundColor3 = Config.InfiniteRange and Colors.Accent or Colors.Panel
+    InfBtn.TextColor3 = Config.InfiniteRange and Colors.Text or Colors.TextDim
 end)
 
 SpeedBtn.MouseButton1Click:Connect(function()
     Config.SpeedEnabled = not Config.SpeedEnabled
-    SpeedBtn.BackgroundColor3 = Config.SpeedEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    SpeedBtn.BackgroundColor3 = Config.SpeedEnabled and Colors.Accent or Colors.Panel
+    SpeedBtn.TextColor3 = Config.SpeedEnabled and Colors.Text or Colors.TextDim
     SpeedBtn.Text = Config.SpeedEnabled and "Speed Hack: ON" or "Speed Hack: OFF"
     ApplySpeed()
 end)
 
 FlyBtn.MouseButton1Click:Connect(function()
     Config.FlyEnabled = not Config.FlyEnabled
-    FlyBtn.BackgroundColor3 = Config.FlyEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    FlyBtn.BackgroundColor3 = Config.FlyEnabled and Colors.Accent or Colors.Panel
+    FlyBtn.TextColor3 = Config.FlyEnabled and Colors.Text or Colors.TextDim
     FlyBtn.Text = Config.FlyEnabled and "Fly Hack: ON" or "Fly Hack: OFF"
     if Config.FlyEnabled then StartFlying() else StopFlying() end
 end)
@@ -884,26 +811,33 @@ SafetyBtn.MouseButton1Click:Connect(function()
     TeleportToSafety()
 end)
 
--- Dragging Logic
-local dragging, dragInput, dragStart, startPos
-Title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
+-- Dropdown Logic
+local function UpdateDropdown()
+    for _, child in pairs(DropdownFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
     end
-end)
-
-Title.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local pBtn = Instance.new("TextButton")
+            pBtn.Size = UDim2.new(1, -4, 0, 20)
+            pBtn.BackgroundColor3 = Colors.Bg
+            pBtn.Text = player.DisplayName
+            pBtn.TextColor3 = Colors.Text
+            pBtn.Font = FontNormal
+            pBtn.TextSize = 10
+            pBtn.Parent = DropdownFrame
+            pBtn.MouseButton1Click:Connect(function()
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
+                end
+                DropdownFrame.Visible = false
+                DropdownBtn.Text = "Select Player..."
+            end)
+        end
     end
+end
+
+DropdownBtn.MouseButton1Click:Connect(function()
+    DropdownFrame.Visible = not DropdownFrame.Visible
+    if DropdownFrame.Visible then UpdateDropdown() end
 end)
