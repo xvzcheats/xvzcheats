@@ -1,0 +1,909 @@
+-- Ultimate Auto-Farm (Clean UI Edition - Layout Fixed)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local VoidAction = Remotes:WaitForChild("VoidAction")
+
+-- ==========================================
+-- CONFIGURATION STATE
+-- ==========================================
+local Config = {
+    Enabled = false,
+    TeleportEnabled = true,
+    InfiniteRange = false, 
+    
+    SpeedEnabled = false,
+    WalkSpeed = 100, 
+    
+    FlyEnabled = false,
+    FlySpeed = 50,
+    
+    AttackCooldown = 0.01, 
+    Range = 1000, 
+    
+    TargetVoid = true,
+    TargetSand = true, 
+    TargetPlayers = true,  
+    TargetAIBugs = true,   
+    TargetObjects = true,
+    TargetOrbs = false,
+    EatCorpses = true,
+    AutoSpin = false,
+    ESP = false 
+}
+
+local lastAttack = 0
+local currentTarget = nil
+local targetStartTime = 0
+local targetStartHealth = 0
+local ignoredBugs = {}
+
+local flyBV = nil
+local flyBG = nil
+local flyConnection = nil
+
+-- ==========================================
+-- ANTI-CHEAT WALKSPEED BYPASS
+-- ==========================================
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", function(self, key)
+    if key == "WalkSpeed" and self:IsA("Humanoid") then
+        if Config.SpeedEnabled then return Config.WalkSpeed end
+    end
+    return oldIndex(self, key)
+end)
+
+local oldNewIndex
+oldNewIndex = hookmetamethod(game, "__newindex", function(self, key, value)
+    if key == "WalkSpeed" and self:IsA("Humanoid") then
+        if Config.SpeedEnabled then return end
+    end
+    return oldNewIndex(self, key, value)
+end)
+
+local function ApplySpeed()
+    if Config.SpeedEnabled then
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            local tempEnabled = Config.SpeedEnabled
+            Config.SpeedEnabled = false
+            char.Humanoid.WalkSpeed = Config.WalkSpeed
+            Config.SpeedEnabled = tempEnabled
+        end
+    end
+end
+
+-- ==========================================
+-- FLY SYSTEM
+-- ==========================================
+function StartFlying()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    StopFlying() 
+
+    flyBV = Instance.new("BodyVelocity")
+    flyBV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+    flyBV.Velocity = Vector3.zero
+    flyBV.Parent = root
+
+    flyBG = Instance.new("BodyGyro")
+    flyBG.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    flyBG.P = 1000
+    flyBG.Parent = root
+
+    flyConnection = RunService.RenderStepped:Connect(function()
+        if not Config.FlyEnabled or not flyBV or not flyBG then return end
+        local camera = workspace.CurrentCamera
+        local moveDirection = Vector3.zero
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDirection += camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDirection -= camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDirection -= camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDirection += camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDirection += Vector3.new(0, 1, 0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDirection -= Vector3.new(0, 1, 0) end
+
+        flyBV.Velocity = moveDirection.Magnitude > 0 and moveDirection.Unit * Config.FlySpeed or Vector3.zero
+        flyBG.CFrame = camera.CFrame
+    end)
+end
+
+function StopFlying()
+    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+    if flyBV then flyBV:Destroy() flyBV = nil end
+    if flyBG then flyBG:Destroy() flyBG = nil end
+end
+
+-- ==========================================
+-- SAFE TELEPORT LOGIC
+-- ==========================================
+local function TeleportToSafety()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+    local currentPos = char.HumanoidRootPart.Position
+    
+    local platform = Instance.new("Part")
+    platform.Name = "SafetyPlatform"
+    platform.Size = Vector3.new(200, 2, 200) 
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.BrickColor = BrickColor.new("Really black")
+    platform.Material = Enum.Material.Neon
+    platform.Transparency = 0.5
+    
+    platform.Position = Vector3.new(currentPos.X + 5000, currentPos.Y - 50, currentPos.Z + 5000)
+    platform.Parent = workspace
+
+    char.HumanoidRootPart.CFrame = CFrame.new(platform.Position + Vector3.new(0, 5, 0))
+end
+
+-- ==========================================
+-- ESP SYSTEM
+-- ==========================================
+local ESPFolder = Instance.new("Folder")
+ESPFolder.Name = "PlayerESP"
+ESPFolder.Parent = game:GetService("CoreGui")
+
+local function createESP(player)
+    if player == LocalPlayer then return end
+    local highlight = Instance.new("Highlight")
+    highlight.Name = player.Name .. "_Highlight"
+    highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Parent = ESPFolder
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = player.Name .. "_Billboard"
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 150, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.SizeOffset = Vector2.new(1, 1) 
+    billboard.Parent = ESPFolder
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.TextStrokeTransparency = 0
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextScaled = true
+    textLabel.Parent = billboard
+    
+    local function updateESP(char)
+        if not char then return end
+        highlight.Adornee = char
+        local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+        if not root then
+            char.ChildAdded:Connect(function(child)
+                if child.Name == "HumanoidRootPart" or child == char.PrimaryPart then billboard.Adornee = child end
+            end)
+        else
+            billboard.Adornee = root
+        end
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then
+            local function updateHealth()
+                local currentHealth = math.floor(hum.Health)
+                local maxHealth = math.floor(hum.MaxHealth)
+                textLabel.Text = player.DisplayName .. " [" .. currentHealth .. "/" .. maxHealth .. "]"
+            end
+            updateHealth()
+            hum.HealthChanged:Connect(updateHealth)
+        end
+    end
+    updateESP(player.Character)
+    player.CharacterAdded:Connect(updateESP)
+end
+
+local function removeESP(player)
+    local highlight = ESPFolder:FindFirstChild(player.Name .. "_Highlight")
+    local billboard = ESPFolder:FindFirstChild(player.Name .. "_Billboard")
+    if highlight then highlight:Destroy() end
+    if billboard then billboard:Destroy() end
+end
+
+local function updateAllESP()
+    for _, player in pairs(Players:GetPlayers()) do
+        if Config.ESP then
+            if not ESPFolder:FindFirstChild(player.Name .. "_Highlight") then createESP(player) end
+        else
+            removeESP(player)
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(player) if Config.ESP then createESP(player) end end)
+Players.PlayerRemoving:Connect(function(player) removeESP(player) end)
+
+-- ==========================================
+-- SAFE POSITION HELPER
+-- ==========================================
+local function getSafePosition(obj)
+    if obj:IsA("Model") then
+        if obj.PrimaryPart then return obj.PrimaryPart.Position
+        else
+            local success, pivot = pcall(function() return obj:GetPivot().Position end)
+            if success then return pivot end
+        end
+    elseif obj:IsA("BasePart") then return obj.Position end
+    return nil
+end
+
+-- ==========================================
+-- TARGETING LOGIC
+-- ==========================================
+local function getClosestTarget()
+    local closest = nil
+    local shortestDistance = math.huge
+    local myChar = LocalPlayer.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil, nil end
+    local myPos = myChar.HumanoidRootPart.Position
+
+    local function isValidDistance(dist)
+        if Config.InfiniteRange then return true end
+        return dist <= Config.Range
+    end
+
+    if Config.EatCorpses then
+        local foldersToCheck = { workspace:FindFirstChild("Bugs"), workspace:FindFirstChild("Nests"), workspace }
+        for _, folder in pairs(foldersToCheck) do
+            if folder then
+                for _, obj in pairs(folder:GetChildren()) do
+                    if obj:GetAttribute("Corpse") == true or obj.Name:find("Corpse") then
+                        local pos = getSafePosition(obj)
+                        if pos then
+                            local dist = (myPos - pos).Magnitude
+                            if isValidDistance(dist) and dist < shortestDistance then
+                                shortestDistance = dist
+                                closest = obj
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if closest then return closest, "Corpse" end
+    end
+
+    if Config.TargetVoid then
+        local voidFolder = workspace:FindFirstChild("VoidOrbs")
+        if voidFolder then
+            for _, orb in pairs(voidFolder:GetDescendants()) do
+                if orb.Name == "VoidOrb" and (orb:IsA("Model") or orb:IsA("BasePart")) then
+                    local pos = getSafePosition(orb)
+                    if pos then
+                        local dist = (myPos - pos).Magnitude
+                        if isValidDistance(dist) and dist < shortestDistance then
+                            shortestDistance = dist
+                            closest = orb
+                        end
+                    end
+                end
+            end
+        end
+        if closest then return closest, "Void" end
+    end
+
+    if Config.TargetSand then
+        local sandFolder = workspace:FindFirstChild("SandOrbs")
+        if sandFolder then
+            for _, orb in pairs(sandFolder:GetDescendants()) do
+                if orb.Name == "SandOrb" and (orb:IsA("Model") or orb:IsA("BasePart")) then
+                    local pos = getSafePosition(orb)
+                    if pos then
+                        local dist = (myPos - pos).Magnitude
+                        if isValidDistance(dist) and dist < shortestDistance then
+                            shortestDistance = dist
+                            closest = orb
+                        end
+                    end
+                end
+            end
+        end
+        if closest then return closest, "Sand" end
+    end
+
+    if Config.TargetOrbs then
+        local orbFolder = workspace:FindFirstChild("Orbs")
+        if orbFolder then
+            for _, orb in pairs(orbFolder:GetChildren()) do
+                if orb.Name == "Orb" and orb:GetAttribute("XP") then
+                    local pos = getSafePosition(orb)
+                    if pos then
+                        local dist = (myPos - pos).Magnitude
+                        if isValidDistance(dist) and dist < shortestDistance then
+                            shortestDistance = dist
+                            closest = orb
+                        end
+                    end
+                end
+            end
+        end
+        if closest then return closest, "Orb" end
+    end
+
+    if Config.TargetPlayers or Config.TargetAIBugs then
+        if Config.TargetPlayers then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local char = player.Character
+                    if char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+                        if char.Humanoid.Health > 0 and not ignoredBugs[char] and char:GetAttribute("Corpse") ~= true then
+                            local dist = (myPos - char.HumanoidRootPart.Position).Magnitude
+                            if isValidDistance(dist) and dist < shortestDistance then
+                                shortestDistance = dist
+                                closest = char
+                            end
+                        end
+                    end
+                end
+            end
+            if closest then return closest, "Bug" end
+        end
+
+        if Config.TargetAIBugs then
+            local aiFolders = { workspace:FindFirstChild("Bugs"), workspace:FindFirstChild("Nests") }
+            for _, folder in pairs(aiFolders) do
+                if folder then
+                    for _, obj in pairs(folder:GetChildren()) do
+                        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+                            if obj.Humanoid.Health > 0 and not ignoredBugs[obj] and obj:GetAttribute("Corpse") ~= true then
+                                local dist = (myPos - obj.HumanoidRootPart.Position).Magnitude
+                                if isValidDistance(dist) and dist < shortestDistance then
+                                    shortestDistance = dist
+                                    closest = obj
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            if closest then return closest, "Bug" end
+        end
+    end
+
+    if Config.TargetObjects then
+        local breakablesFolder = workspace:FindFirstChild("Breakables") or workspace
+        for _, obj in pairs(breakablesFolder:GetChildren()) do
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                if obj:GetAttribute("Breakable") or obj.Name:find("Acorn") or obj.Name:find("Cocoon") or obj.Name:find("Silk") then
+                    local objPos = getSafePosition(obj)
+                    if objPos then
+                        local dist = (myPos - objPos).Magnitude
+                        if isValidDistance(dist) and dist < shortestDistance then
+                            shortestDistance = dist
+                            closest = obj
+                        end
+                    end
+                end
+            end
+        end
+        if closest then return closest, "Object" end
+    end
+    return nil, nil
+end
+
+-- ==========================================
+-- AUTO SPIN LOOP
+-- ==========================================
+task.spawn(function()
+    while task.wait(1) do
+        if Config.Enabled and Config.AutoSpin then
+            pcall(function()
+                VoidAction:InvokeServer("Spin")
+                task.wait(0.1)
+                VoidAction:InvokeServer("Credits", {Spins = 1, Credits = 500, Cost = 500})
+            end)
+            task.wait(2) 
+        end
+    end
+end)
+
+-- ==========================================
+-- MAIN COMBAT LOOP
+-- ==========================================
+RunService.RenderStepped:Connect(function()
+    if not Config.Enabled then return end
+    if tick() - lastAttack < Config.AttackCooldown then return end
+
+    local target, targetType = getClosestTarget()
+    
+    if target and target ~= currentTarget then
+        currentTarget = target
+        targetStartTime = tick()
+        targetStartHealth = target:FindFirstChild("Humanoid") and target.Humanoid.Health or 0
+    end
+
+    if target then
+        lastAttack = tick()
+        local targetPos = getSafePosition(target)
+        local myChar = LocalPlayer.Character
+        
+        if Config.TeleportEnabled and targetPos and myChar and myChar:FindFirstChild("HumanoidRootPart") then
+            myChar.HumanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+            
+            if targetType == "Void" or targetType == "Orb" or targetType == "Sand" then
+                task.wait(0.15) 
+            end
+        end
+
+        if targetType == "Bug" then
+            task.wait(2.0) 
+            if target and target:FindFirstChild("Humanoid") and target.Humanoid.Health >= targetStartHealth then
+                ignoredBugs[target] = true
+                currentTarget = nil 
+                task.delay(5, function() ignoredBugs[target] = nil end)
+            end
+        end
+    end
+end)
+
+-- ==========================================
+-- GUI CREATION (FIXED LAYOUT)
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UltimateFarm"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = game:GetService("CoreGui")
+
+-- The main toggle button (Always visible)
+local ToggleMenuBtn = Instance.new("TextButton")
+ToggleMenuBtn.Size = UDim2.new(0, 160, 0, 35)
+ToggleMenuBtn.Position = UDim2.new(0, 20, 0, 20)
+ToggleMenuBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+ToggleMenuBtn.Text = "▶ Ultimate Farm"
+ToggleMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleMenuBtn.Font = Enum.Font.GothamBold
+ToggleMenuBtn.TextSize = 14
+ToggleMenuBtn.Parent = ScreenGui
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 6)
+ToggleCorner.Parent = ToggleMenuBtn
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(80, 80, 100)
+ToggleStroke.Thickness = 1
+ToggleStroke.Parent = ToggleMenuBtn
+
+-- The main frame (Hidden by default)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 260, 0, 660) -- Increased height to fit new layout
+MainFrame.Position = UDim2.new(0, 20, 0, 65)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainFrame
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(60, 60, 70)
+UIStroke.Thickness = 2
+UIStroke.Parent = MainFrame
+
+-- Header Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+Title.BackgroundTransparency = 0.5
+Title.Text = "Ultimate Farm Menu"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 8)
+TitleCorner.Parent = Title
+
+-- Toggle Menu Logic
+ToggleMenuBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+    if MainFrame.Visible then
+        ToggleMenuBtn.Text = "▼ Ultimate Farm"
+    else
+        ToggleMenuBtn.Text = "▶ Ultimate Farm"
+    end
+end)
+
+-- Start Farming Button
+local StartBtn = Instance.new("TextButton")
+StartBtn.Size = UDim2.new(1, -20, 0, 35)
+StartBtn.Position = UDim2.new(0, 10, 0, 45)
+StartBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+StartBtn.Text = "START FARMING"
+StartBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+StartBtn.Font = Enum.Font.GothamBold
+StartBtn.TextSize = 13
+StartBtn.Parent = MainFrame
+
+local StartCorner = Instance.new("UICorner")
+StartCorner.CornerRadius = UDim.new(0, 6)
+StartCorner.Parent = StartBtn
+
+-- Teleport & Range Toggles
+local TpToggle = Instance.new("TextButton")
+TpToggle.Size = UDim2.new(0, 115, 0, 28)
+TpToggle.Position = UDim2.new(0, 10, 0, 90)
+TpToggle.BackgroundColor3 = Color3.fromRGB(80, 150, 255)
+TpToggle.Text = "Teleport: ON"
+TpToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+TpToggle.Font = Enum.Font.GothamBold
+TpToggle.TextSize = 11
+TpToggle.Parent = MainFrame
+
+local TpCorner = Instance.new("UICorner")
+TpCorner.CornerRadius = UDim.new(0, 4)
+TpCorner.Parent = TpToggle
+
+local InfRangeBtn = Instance.new("TextButton")
+InfRangeBtn.Size = UDim2.new(0, 115, 0, 28)
+InfRangeBtn.Position = UDim2.new(0, 135, 0, 90)
+InfRangeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+InfRangeBtn.Text = "Infinite Range"
+InfRangeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+InfRangeBtn.Font = Enum.Font.GothamBold
+InfRangeBtn.TextSize = 11
+InfRangeBtn.Parent = MainFrame
+
+local InfCorner = Instance.new("UICorner")
+InfCorner.CornerRadius = UDim.new(0, 4)
+InfCorner.Parent = InfRangeBtn
+
+-- Range Slider
+local RangeLabel = Instance.new("TextLabel")
+RangeLabel.Size = UDim2.new(1, -20, 0, 15)
+RangeLabel.Position = UDim2.new(0, 10, 0, 125)
+RangeLabel.BackgroundTransparency = 1
+RangeLabel.Text = "Range"
+RangeLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+RangeLabel.Font = Enum.Font.Gotham
+RangeLabel.TextSize = 11
+RangeLabel.TextXAlignment = Enum.TextXAlignment.Left
+RangeLabel.Parent = MainFrame
+
+local RangeSlider = Instance.new("Frame")
+RangeSlider.Size = UDim2.new(1, -20, 0, 15)
+RangeSlider.Position = UDim2.new(0, 10, 0, 140)
+RangeSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+RangeSlider.Parent = MainFrame
+
+local RangeFill = Instance.new("Frame")
+RangeFill.Size = UDim2.new(0.5, 0, 1, 0) 
+RangeFill.BackgroundColor3 = Color3.fromRGB(255, 150, 50)
+RangeFill.Parent = RangeSlider
+
+local RangeCorner = Instance.new("UICorner")
+RangeCorner.CornerRadius = UDim.new(0, 4)
+RangeCorner.Parent = RangeSlider
+local RangeFillCorner = Instance.new("UICorner")
+RangeFillCorner.CornerRadius = UDim.new(0, 4)
+RangeFillCorner.Parent = RangeFill
+
+-- Speed Hack
+local SpeedBtn = Instance.new("TextButton")
+SpeedBtn.Size = UDim2.new(1, -20, 0, 28)
+SpeedBtn.Position = UDim2.new(0, 10, 0, 165)
+SpeedBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+SpeedBtn.Text = "Speed Hack: OFF"
+SpeedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedBtn.Font = Enum.Font.GothamBold
+SpeedBtn.TextSize = 11
+SpeedBtn.Parent = MainFrame
+
+local SpeedCorner = Instance.new("UICorner")
+SpeedCorner.CornerRadius = UDim.new(0, 4)
+SpeedCorner.Parent = SpeedBtn
+
+local SpeedSlider = Instance.new("Frame")
+SpeedSlider.Size = UDim2.new(1, -20, 0, 15)
+SpeedSlider.Position = UDim2.new(0, 10, 0, 198)
+SpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+SpeedSlider.Parent = MainFrame
+
+local SpeedFill = Instance.new("Frame")
+SpeedFill.Size = UDim2.new(0.4, 0, 1, 0) 
+SpeedFill.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+SpeedFill.Parent = SpeedSlider
+
+local SpeedSlideCorner = Instance.new("UICorner")
+SpeedSlideCorner.CornerRadius = UDim.new(0, 4)
+SpeedSlideCorner.Parent = SpeedSlider
+local SpeedFillCorner = Instance.new("UICorner")
+SpeedFillCorner.CornerRadius = UDim.new(0, 4)
+SpeedFillCorner.Parent = SpeedFill
+
+-- Fly Hack
+local FlyBtn = Instance.new("TextButton")
+FlyBtn.Size = UDim2.new(1, -20, 0, 28)
+FlyBtn.Position = UDim2.new(0, 10, 0, 220)
+FlyBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+FlyBtn.Text = "Fly Hack: OFF"
+FlyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlyBtn.Font = Enum.Font.GothamBold
+FlyBtn.TextSize = 11
+FlyBtn.Parent = MainFrame
+
+local FlyCorner = Instance.new("UICorner")
+FlyCorner.CornerRadius = UDim.new(0, 4)
+FlyCorner.Parent = FlyBtn
+
+local FlySlider = Instance.new("Frame")
+FlySlider.Size = UDim2.new(1, -20, 0, 15)
+FlySlider.Position = UDim2.new(0, 10, 0, 253)
+FlySlider.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+FlySlider.Parent = MainFrame
+
+local FlyFill = Instance.new("Frame")
+FlyFill.Size = UDim2.new(0.2, 0, 1, 0) 
+FlyFill.BackgroundColor3 = Color3.fromRGB(150, 50, 200)
+FlyFill.Parent = FlySlider
+
+local FlySlideCorner = Instance.new("UICorner")
+FlySlideCorner.CornerRadius = UDim.new(0, 4)
+FlySlideCorner.Parent = FlySlider
+local FlyFillCorner = Instance.new("UICorner")
+FlyFillCorner.CornerRadius = UDim.new(0, 4)
+FlyFillCorner.Parent = FlyFill
+
+-- Toggles Grid (Increased height to fit the 9th button)
+local TogglesFrame = Instance.new("Frame")
+TogglesFrame.Size = UDim2.new(1, -20, 0, 200)
+TogglesFrame.Position = UDim2.new(0, 10, 0, 280) 
+TogglesFrame.BackgroundTransparency = 1
+TogglesFrame.Parent = MainFrame
+
+local function CreateToggle(name, text, defaultState, pos)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.48, 0, 0, 30)
+    btn.Position = pos
+    btn.BackgroundColor3 = defaultState and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.Parent = TogglesFrame
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = btn
+    btn.MouseButton1Click:Connect(function()
+        Config[name] = not Config[name]
+        btn.BackgroundColor3 = Config[name] and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+        if name == "ESP" then updateAllESP() end
+    end)
+    return btn
+end
+
+CreateToggle("TargetVoid", "Void Orbs", true, UDim2.new(0, 0, 0, 0))
+CreateToggle("TargetSand", "Sand Orbs", true, UDim2.new(0.52, 0, 0, 0))
+CreateToggle("TargetPlayers", "Players", true, UDim2.new(0, 0, 0, 40))
+CreateToggle("TargetAIBugs", "AI Bugs", true, UDim2.new(0.52, 0, 0, 40))
+CreateToggle("TargetObjects", "Objects", true, UDim2.new(0, 0, 0, 80))
+CreateToggle("TargetOrbs", "XP Orbs", false, UDim2.new(0.52, 0, 0, 80))
+CreateToggle("EatCorpses", "Eat Bodies", true, UDim2.new(0, 0, 0, 120))
+CreateToggle("AutoSpin", "Auto Spin", false, UDim2.new(0.52, 0, 0, 120))
+CreateToggle("ESP", "Player ESP", false, UDim2.new(0, 0, 0, 160))
+
+-- Safety Button (Pushed down to y=495)
+local SafetyBtn = Instance.new("TextButton")
+SafetyBtn.Size = UDim2.new(1, -20, 0, 28)
+SafetyBtn.Position = UDim2.new(0, 10, 0, 495)
+SafetyBtn.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+SafetyBtn.Text = "TELEPORT TO SAFETY"
+SafetyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SafetyBtn.Font = Enum.Font.GothamBold
+SafetyBtn.TextSize = 11
+SafetyBtn.Parent = MainFrame
+
+local SafetyCorner = Instance.new("UICorner")
+SafetyCorner.CornerRadius = UDim.new(0, 4)
+SafetyCorner.Parent = SafetyBtn
+
+-- Player Dropdown
+local DropdownLabel = Instance.new("TextLabel")
+DropdownLabel.Size = UDim2.new(1, -20, 0, 15)
+DropdownLabel.Position = UDim2.new(0, 10, 0, 535)
+DropdownLabel.BackgroundTransparency = 1
+DropdownLabel.Text = "Teleport to Player:"
+DropdownLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+DropdownLabel.Font = Enum.Font.Gotham
+DropdownLabel.TextSize = 11
+DropdownLabel.TextXAlignment = Enum.TextXAlignment.Left
+DropdownLabel.Parent = MainFrame
+
+local DropdownBtn = Instance.new("TextButton")
+DropdownBtn.Size = UDim2.new(1, -20, 0, 28)
+DropdownBtn.Position = UDim2.new(0, 10, 0, 555)
+DropdownBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+DropdownBtn.Text = "Select a Player..."
+DropdownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DropdownBtn.Font = Enum.Font.Gotham
+DropdownBtn.TextSize = 11
+DropdownBtn.Parent = MainFrame
+
+local DropdownCorner = Instance.new("UICorner")
+DropdownCorner.CornerRadius = UDim.new(0, 4)
+DropdownCorner.Parent = DropdownBtn
+
+local DropdownFrame = Instance.new("ScrollingFrame")
+DropdownFrame.Size = UDim2.new(1, -20, 0, 80)
+DropdownFrame.Position = UDim2.new(0, 10, 0, 588)
+DropdownFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+DropdownFrame.BorderSizePixel = 0
+DropdownFrame.Visible = false
+DropdownFrame.ScrollBarThickness = 4
+DropdownFrame.Parent = MainFrame
+
+local DropdownUICorner = Instance.new("UICorner")
+DropdownUICorner.CornerRadius = UDim.new(0, 4)
+DropdownUICorner.Parent = DropdownFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0, 2)
+UIListLayout.Parent = DropdownFrame
+
+local function UpdateDropdown()
+    for _, child in pairs(DropdownFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local pBtn = Instance.new("TextButton")
+            pBtn.Size = UDim2.new(1, -4, 0, 22)
+            pBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+            pBtn.Text = player.DisplayName
+            pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            pBtn.Font = Enum.Font.Gotham
+            pBtn.TextSize = 11
+            pBtn.Parent = DropdownFrame
+            pBtn.MouseButton1Click:Connect(function()
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
+                end
+                DropdownFrame.Visible = false
+                DropdownBtn.Text = "Select a Player..."
+            end)
+        end
+    end
+end
+
+DropdownBtn.MouseButton1Click:Connect(function()
+    DropdownFrame.Visible = not DropdownFrame.Visible
+    if DropdownFrame.Visible then UpdateDropdown() end
+end)
+
+-- Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 20)
+StatusLabel.Position = UDim2.new(0, 10, 0, 630) 
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Status: Idle"
+StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextSize = 11
+StatusLabel.Parent = MainFrame
+
+-- ==========================================
+-- GUI EVENT LISTENERS
+-- ==========================================
+local draggingRange = false
+local draggingSpeed = false
+local draggingFly = false
+
+RangeSlider.InputBegan:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not Config.InfiniteRange then draggingRange = true end
+end)
+
+SpeedSlider.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSpeed = true end
+end)
+
+FlySlider.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingFly = true end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        draggingRange = false
+        draggingSpeed = false
+        draggingFly = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if draggingRange then
+            local percent = math.clamp((input.Position.X - RangeSlider.AbsolutePosition.X) / RangeSlider.AbsoluteSize.X, 0.01, 1)
+            RangeFill.Size = UDim2.new(percent, 0, 1, 0)
+            Config.Range = math.floor(percent * 2000) 
+        elseif draggingSpeed then
+            local percent = math.clamp((input.Position.X - SpeedSlider.AbsolutePosition.X) / SpeedSlider.AbsoluteSize.X, 0.064, 1) 
+            SpeedFill.Size = UDim2.new(percent, 0, 1, 0)
+            Config.WalkSpeed = math.floor(percent * 250) 
+            ApplySpeed()
+        elseif draggingFly then
+            local percent = math.clamp((input.Position.X - FlySlider.AbsolutePosition.X) / FlySlider.AbsoluteSize.X, 0.02, 1) 
+            FlyFill.Size = UDim2.new(percent, 0, 1, 0)
+            Config.FlySpeed = math.floor(percent * 200) 
+        end
+    end
+end)
+
+StartBtn.MouseButton1Click:Connect(function()
+    Config.Enabled = not Config.Enabled
+    StartBtn.BackgroundColor3 = Config.Enabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    StartBtn.Text = Config.Enabled and "STOP FARMING" or "START FARMING"
+    StatusLabel.Text = Config.Enabled and "Status: Farming..." or "Status: Idle"
+end)
+
+TpToggle.MouseButton1Click:Connect(function()
+    Config.TeleportEnabled = not Config.TeleportEnabled
+    TpToggle.Text = Config.TeleportEnabled and "Teleport: ON" or "Teleport: OFF"
+    TpToggle.BackgroundColor3 = Config.TeleportEnabled and Color3.fromRGB(80, 150, 255) or Color3.fromRGB(200, 50, 50)
+end)
+
+InfRangeBtn.MouseButton1Click:Connect(function()
+    Config.InfiniteRange = not Config.InfiniteRange
+    InfRangeBtn.BackgroundColor3 = Config.InfiniteRange and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    if Config.InfiniteRange then
+        RangeFill.BackgroundColor3 = Color3.fromRGB(100, 100, 100) 
+    else
+        RangeFill.BackgroundColor3 = Color3.fromRGB(255, 150, 50) 
+    end
+end)
+
+SpeedBtn.MouseButton1Click:Connect(function()
+    Config.SpeedEnabled = not Config.SpeedEnabled
+    SpeedBtn.BackgroundColor3 = Config.SpeedEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    SpeedBtn.Text = Config.SpeedEnabled and "Speed Hack: ON" or "Speed Hack: OFF"
+    ApplySpeed()
+end)
+
+FlyBtn.MouseButton1Click:Connect(function()
+    Config.FlyEnabled = not Config.FlyEnabled
+    FlyBtn.BackgroundColor3 = Config.FlyEnabled and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+    FlyBtn.Text = Config.FlyEnabled and "Fly Hack: ON" or "Fly Hack: OFF"
+    if Config.FlyEnabled then StartFlying() else StopFlying() end
+end)
+
+SafetyBtn.MouseButton1Click:Connect(function()
+    TeleportToSafety()
+end)
+
+-- Dragging Logic
+local dragging, dragInput, dragStart, startPos
+Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+
+Title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
