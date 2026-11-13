@@ -8,6 +8,8 @@ local TweenService = game:GetService("TweenService")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local VoidAction = Remotes:WaitForChild("VoidAction")
+local SandChestAction = Remotes:WaitForChild("SandChestAction")
+local Rewards = Remotes:WaitForChild("Rewards")
 
 -- ==========================================
 -- CONFIGURATION STATE
@@ -34,6 +36,7 @@ local Config = {
     TargetOrbs = false,
     EatCorpses = true,
     AutoSpin = false,
+    AutoSandChest = false,
     ESP = false 
 }
 
@@ -46,6 +49,7 @@ local ignoredBugs = {}
 local flyBV = nil
 local flyBG = nil
 local flyConnection = nil
+local isChestRunning = false
 
 -- ==========================================
 -- CORE LOGIC
@@ -377,9 +381,14 @@ local function getClosestTarget()
     return nil, nil
 end
 
+-- ==========================================
+-- AUTO CHEST & SPIN LOOP
+-- ==========================================
 task.spawn(function()
     while task.wait(1) do
-        if Config.Enabled and Config.AutoSpin then
+        if not Config.Enabled then continue end
+        
+        if Config.AutoSpin then
             pcall(function()
                 VoidAction:InvokeServer("Spin")
                 task.wait(0.1)
@@ -387,9 +396,32 @@ task.spawn(function()
             end)
             task.wait(2) 
         end
+
+        if Config.AutoSandChest and not isChestRunning then
+            isChestRunning = true
+            task.spawn(function()
+                pcall(function()
+                    -- 1. Play
+                    SandChestAction:InvokeServer("Play")
+                    task.wait(0.5) -- Reduced from 1s
+                    
+                    -- 2. Pick Chest 1
+                    SandChestAction:InvokeServer("Pick", 1)
+                    
+                    -- 3. Wait for server to process
+                    task.wait(2) -- Reduced from 4s
+                    
+                    -- 4. Claim the reward
+                    Rewards:InvokeServer("Claim")
+                end)
+                
+                -- Wait 1.5 seconds before the next chest
+                task.wait(1.5) 
+                isChestRunning = false
+            end)
+        end
     end
 end)
-
 RunService.RenderStepped:Connect(function()
     if not Config.Enabled then return end
     if tick() - lastAttack < Config.AttackCooldown then return end
@@ -468,7 +500,7 @@ ToggleStroke.Parent = ToggleBtn
 
 -- Main Frame
 local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0, 260, 0, 580)
+Main.Size = UDim2.new(0, 260, 0, 630)
 Main.Position = UDim2.new(0, 20, 0, 65)
 Main.BackgroundColor3 = Colors.Bg
 Main.BorderSizePixel = 0
@@ -631,6 +663,7 @@ CreateToggle("TargetOrbs", "XP Orbs", false, UDim2.new(0.52, 0, 0, 280))
 CreateToggle("EatCorpses", "Eat Bodies", true, UDim2.new(0, 0, 0, 315))
 CreateToggle("AutoSpin", "Auto Spin", false, UDim2.new(0.52, 0, 0, 315))
 CreateToggle("ESP", "Player ESP", false, UDim2.new(0, 0, 0, 350))
+CreateToggle("AutoSandChest", "Auto Sand Chest", false, UDim2.new(0.52, 0, 0, 350))
 
 -- Bottom Section
 local SafetyBtn = Instance.new("TextButton")
@@ -681,7 +714,7 @@ StatusLbl.Parent = Content
 -- INTERACTIONS & ANIMATIONS
 -- ==========================================
 
--- Toggle Menu (Fixed position snapping)
+-- Toggle Menu
 local isOpen = false
 ToggleBtn.MouseButton1Click:Connect(function()
     isOpen = not isOpen
